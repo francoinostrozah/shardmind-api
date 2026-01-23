@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
-import { PokedexController } from './presentation';
+import { GenerationsController, PokedexController } from './presentation';
 import { PokemonPrismaRepository } from './infrastructure';
 import { BrowsePokedexHandler, LookupPokemonByDexIdHandler, LookupPokemonByNameHandler } from './application';
 
 @Module({
-  controllers: [PokedexController],
+  controllers: [PokedexController, GenerationsController],
   providers: [
     // handlers (use-cases)
     BrowsePokedexHandler,

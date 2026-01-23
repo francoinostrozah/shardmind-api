@@ -1,8 +1,30 @@
+import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
-  await app.listen(process.env.PORT ?? 3000);
+
+  // Global validation and transformation for all incoming requests.
+  // - whitelist: removes properties not defined in DTOs
+  // - forbidNonWhitelisted: throws 400 if extra properties are sent
+  // - transform: enables class-transformer (@Transform, @Type)
+  // - implicit conversion disabled to keep transformations explicit
+  app.useGlobalPipes(
+    new ValidationPipe({
+      whitelist: true,
+      forbidNonWhitelisted: true,
+      transform: true,
+      transformOptions: {
+        enableImplicitConversion: false
+      }
+    })
+  );
+
+  // Enable CORS if a frontend will consume this API
+  // app.enableCors({ origin: true, credentials: true });
+
+  await app.listen(3000);
 }
+
 bootstrap();
