@@ -1,0 +1,141 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  url      = env("DATABASE_URL")
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum IngestionRunStatus {
+  RUNNING
+  SUCCESS
+  FAILED
+}
+
+model Pokemon {
+  dexId          Int     @id // National Dex (1..)
+  name           String  @unique
+  height         Int?
+  weight         Int?
+  baseExperience Int?
+  spriteDefault  String?
+
+  types     PokemonType[]
+  stats     PokemonStat[]
+  abilities PokemonAbility[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Type {
+  id   Int    @id // PokeAPI type id (1..18)
+  name String @unique
+
+  pokemons PokemonType[]
+}
+
+model PokemonType {
+  pokemonDexId Int
+  typeId       Int
+  slot         Int // 1 or 2
+
+  pokemon Pokemon @relation(fields: [pokemonDexId], references: [dexId], onDelete: Cascade)
+  type    Type    @relation(fields: [typeId], references: [id], onDelete: Restrict)
+
+  @@id([pokemonDexId, typeId])
+  @@index([typeId])
+}
+
+model Stat {
+  id   Int    @id // PokeAPI stat id
+  name String @unique
+
+  pokemons PokemonStat[]
+}
+
+model PokemonStat {
+  pokemonDexId Int
+  statId       Int
+  baseValue    Int
+  effort       Int
+
+  pokemon Pokemon @relation(fields: [pokemonDexId], references: [dexId], onDelete: Cascade)
+  stat    Stat    @relation(fields: [statId], references: [id], onDelete: Restrict)
+
+  @@id([pokemonDexId, statId])
+  @@index([statId])
+}
+
+model Ability {
+  id   Int    @id // PokeAPI ability id
+  name String @unique
+
+  pokemons PokemonAbility[]
+}
+
+model PokemonAbility {
+  pokemonDexId Int
+  abilityId    Int
+  isHidden     Boolean
+  slot         Int
+
+  pokemon Pokemon @relation(fields: [pokemonDexId], references: [dexId], onDelete: Cascade)
+  ability Ability @relation(fields: [abilityId], references: [id], onDelete: Restrict)
+
+  @@id([pokemonDexId, abilityId])
+  @@index([abilityId])
+}
+
+/**
+ * Data Engineering: trazabilidad de ingestas
+ */
+model IngestionRun {
+  id        String             @id @default(cuid())
+  source    String // "pokeapi"
+  rangeFrom Int?
+  rangeTo   Int?
+  status    IngestionRunStatus @default(RUNNING)
+
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+
+  itemsTotal   Int @default(0)
+  itemsSuccess Int @default(0)
+  itemsFailed  Int @default(0)
+
+  errors IngestionError[]
+}
+
+model IngestionError {
+  id        String @id @default(cuid())
+  runId     String
+  entity    String // "pokemon" | "type" | etc.
+  entityKey String // e.g. "25"
+  message   String @db.Text
+
+  createdAt DateTime @default(now())
+
+  run IngestionRun @relation(fields: [runId], references: [id], onDelete: Cascade)
+
+  @@index([runId])
+}
+
+model Generation {
+  id      Int    @id
+  name    String
+  dexFrom Int
+  dexTo   Int
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([dexFrom, dexTo])
+}
