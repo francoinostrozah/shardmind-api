@@ -128,4 +128,36 @@ export class PokemonPrismaRepository implements PokemonRepository {
       }))
     };
   }
+
+  async suggestByName(input: { q: string; limit: number; minScore?: number }) {
+    // Normalize input similarly to how Pokemon names are stored (lowercase)
+    const q = input.q.trim().toLowerCase();
+    const limit = Math.min(Math.max(input.limit, 1), 20);
+    const minScore = input.minScore ?? 0.25;
+
+    // Uses pg_trgm:
+    // - similarity(name, q) returns 0..1
+    // - name % q uses trigram similarity operator (index-friendly with GIN)
+    const rows = await this.prisma.$queryRaw<
+      { dexId: number; name: string; spriteDefault: string | null; score: number }[]
+    >`
+      SELECT
+        p."dexId" as "dexId",
+        p."name" as "name",
+        p."spriteDefault" as "spriteDefault",
+        similarity(p."name", ${q}) as "score"
+      FROM "Pokemon" p
+      WHERE p."name" % ${q}
+        AND similarity(p."name", ${q}) >= ${minScore}
+      ORDER BY "score" DESC, p."dexId" ASC
+      LIMIT ${limit};
+    `;
+
+    return rows.map((r) => ({
+      dexId: r.dexId,
+      name: r.name,
+      spriteDefault: r.spriteDefault,
+      score: Number(r.score)
+    }));
+  }
 }

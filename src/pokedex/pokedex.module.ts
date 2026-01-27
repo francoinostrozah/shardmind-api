@@ -1,7 +1,12 @@
 import { Module } from '@nestjs/common';
 import { GenerationsController, PokedexController } from './presentation';
 import { PokemonPrismaRepository } from './infrastructure';
-import { BrowsePokedexHandler, LookupPokemonByDexIdHandler, LookupPokemonByNameHandler } from './application';
+import {
+  BrowsePokedexHandler,
+  LookupPokemonByDexIdHandler,
+  LookupPokemonByNameHandler,
+  SuggestPokemonHandler
+} from './application';
 
 @Module({
   controllers: [PokedexController, GenerationsController],
@@ -10,6 +15,7 @@ import { BrowsePokedexHandler, LookupPokemonByDexIdHandler, LookupPokemonByNameH
     BrowsePokedexHandler,
     LookupPokemonByDexIdHandler,
     LookupPokemonByNameHandler,
+    SuggestPokemonHandler,
 
     // infra repos
     PokemonPrismaRepository,

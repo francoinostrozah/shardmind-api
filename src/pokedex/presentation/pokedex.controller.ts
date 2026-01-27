@@ -3,7 +3,10 @@ import {
   BrowsePokedexQueryDto,
   BrowsePokedexQuery,
   LookupPokemonByDexIdQuery,
-  LookupPokemonByNameQuery
+  LookupPokemonByNameQuery,
+  SuggestPokemonHandler,
+  SuggestPokemonQueryDto,
+  SuggestPokemonQuery
 } from '../application';
 import { BrowsePokedexHandler, LookupPokemonByDexIdHandler, LookupPokemonByNameHandler } from '../application';
 import { DexId, PokemonName } from '../domain';
@@ -13,7 +16,8 @@ export class PokedexController {
   constructor(
     private readonly browse: BrowsePokedexHandler,
     private readonly byDex: LookupPokemonByDexIdHandler,
-    private readonly byName: LookupPokemonByNameHandler
+    private readonly byName: LookupPokemonByNameHandler,
+    private readonly suggest: SuggestPokemonHandler
   ) {}
 
   @Get()
@@ -27,6 +31,16 @@ export class PokedexController {
         dexTo: q.dexTo,
         limit: q.limit ?? 20,
         offset: q.offset ?? 0
+      })
+    );
+  }
+
+  @Get('suggest')
+  suggestNames(@Query() q: SuggestPokemonQueryDto) {
+    return this.suggest.execute(
+      new SuggestPokemonQuery({
+        q: q.q,
+        limit: q.limit ?? 10
       })
     );
   }
