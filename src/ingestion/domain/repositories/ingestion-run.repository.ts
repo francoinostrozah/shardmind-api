@@ -1,3 +1,5 @@
+import { IngestionErrorReadModel, IngestionRunReadModel } from '../models';
+
 export type IngestionRunStatus = 'RUNNING' | 'SUCCESS' | 'FAILED';
 
 export type IngestionRun = {
@@ -19,4 +21,12 @@ export interface IngestionRunRepository {
     runId: string,
     input: { status: 'SUCCESS' | 'FAILED'; itemsSuccess: number; itemsFailed: number }
   ): Promise<IngestionRun>;
+
+  // Read-side methods (observability)
+  listRuns(input: { limit: number; offset: number }): Promise<{ total: number; items: IngestionRunReadModel[] }>;
+  listRunErrors(input: {
+    runId: string;
+    limit: number;
+    offset: number;
+  }): Promise<{ total: number; items: IngestionErrorReadModel[] }>;
 }

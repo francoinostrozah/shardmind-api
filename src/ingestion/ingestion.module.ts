@@ -1,14 +1,18 @@
 import { Module } from '@nestjs/common';
-import { IngestionController } from './presentation';
-import { SyncPokedexGenerationHandler } from './application';
+import { IngestionController, IngestionObservabilityController } from './presentation';
+import { ListIngestionRunErrorsHandler, ListIngestionRunsHandler, SyncPokedexGenerationHandler } from './application';
 import { PokeApiClient } from './infrastructure/pokeapi';
 import { IngestionRunPrismaRepository, PokedexUpsertPrismaRepository } from './infrastructure/prisma';
 
 @Module({
-  controllers: [IngestionController],
+  controllers: [IngestionController, IngestionObservabilityController],
   providers: [
-    // app
+    // commands
     SyncPokedexGenerationHandler,
+
+    // queries (observability)
+    ListIngestionRunsHandler,
+    ListIngestionRunErrorsHandler,
 
     // infra
     PokeApiClient,

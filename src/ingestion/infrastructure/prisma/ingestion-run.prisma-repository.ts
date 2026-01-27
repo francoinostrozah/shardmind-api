@@ -66,4 +66,58 @@ export class IngestionRunPrismaRepository implements IngestionRunRepository {
       itemsFailed: run.itemsFailed
     };
   }
+
+  // Read-side: list ingestion runs for observability
+  async listRuns(input: { limit: number; offset: number }) {
+    const [total, rows] = await Promise.all([
+      this.prisma.ingestionRun.count(),
+      this.prisma.ingestionRun.findMany({
+        orderBy: { startedAt: 'desc' },
+        skip: input.offset,
+        take: input.limit
+      })
+    ]);
+
+    return {
+      total,
+      items: rows.map((r) => ({
+        id: r.id,
+        source: r.source,
+        status: r.status as any,
+        startedAt: r.startedAt,
+        finishedAt: r.finishedAt,
+        itemsTotal: r.itemsTotal,
+        itemsSuccess: r.itemsSuccess,
+        itemsFailed: r.itemsFailed,
+        generation: r.rangeFrom
+      }))
+    };
+  }
+
+  // Read-side: list ingestion errors for a given run
+  async listRunErrors(input: { runId: string; limit: number; offset: number }) {
+    const where = { runId: input.runId };
+
+    const [total, rows] = await Promise.all([
+      this.prisma.ingestionError.count({ where }),
+      this.prisma.ingestionError.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: input.offset,
+        take: input.limit
+      })
+    ]);
+
+    return {
+      total,
+      items: rows.map((e) => ({
+        id: e.id,
+        runId: e.runId,
+        entity: e.entity,
+        entityKey: e.entityKey,
+        message: e.message,
+        createdAt: e.createdAt
+      }))
+    };
+  }
 }
