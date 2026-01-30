@@ -1,5 +1,5 @@
 import { Transform } from 'class-transformer';
-import { IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, Max, Min } from 'class-validator';
 
 export class BrowsePokedexQueryDto {
   @IsOptional()
@@ -40,4 +40,18 @@ export class BrowsePokedexQueryDto {
   @IsInt()
   @Min(0)
   offset?: number;
+
+  @IsOptional()
+  @Transform(({ value }) => Number(value))
+  @IsInt()
+  @Min(1)
+  cursor?: number;
+
+  @IsOptional()
+  @IsIn(['dexId', 'name'])
+  sort?: 'dexId' | 'name';
+
+  @IsOptional()
+  @IsIn(['asc', 'desc'])
+  direction?: 'asc' | 'desc';
 }

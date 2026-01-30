@@ -3,6 +3,7 @@ import { GenerationsController, PokedexController } from './presentation';
 import { PokemonPrismaRepository } from './infrastructure';
 import {
   BrowsePokedexHandler,
+  FindSimilarPokemonHandler,
   LookupPokemonByDexIdHandler,
   LookupPokemonByNameHandler,
   SuggestPokemonHandler
@@ -16,6 +17,7 @@ import {
     LookupPokemonByDexIdHandler,
     LookupPokemonByNameHandler,
     SuggestPokemonHandler,
+    FindSimilarPokemonHandler,
 
     // infra repos
     PokemonPrismaRepository,

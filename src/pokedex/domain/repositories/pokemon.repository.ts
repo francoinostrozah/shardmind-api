@@ -8,7 +8,16 @@ export type PokedexBrowseCriteria = {
   dexFrom?: number;
   dexTo?: number;
   limit: number;
+
+  // Offset pagination (fallback)
   offset: number;
+
+  // Cursor pagination (keyset). Only supported when sort = 'dexId'
+  cursor?: number;
+
+  // Sorting
+  sort?: 'dexId' | 'name';
+  direction?: 'asc' | 'desc';
 };
 
 export type PokemonNameSuggestion = {
@@ -18,9 +27,18 @@ export type PokemonNameSuggestion = {
   score: number;
 };
 
+export type SimilarPokemonResult = {
+  dexId: number;
+  name: string;
+  spriteDefault: string | null;
+  score: number;
+  sharedTypes: string[];
+};
+
 export interface PokemonRepository {
   browse(criteria: PokedexBrowseCriteria): Promise<{ total: number; items: PokemonListItem[] }>;
   findByDexId(dexId: DexId): Promise<PokemonDetail | null>;
   findByName(name: PokemonName): Promise<PokemonDetail | null>;
   suggestByName(input: { q: string; limit: number; minScore?: number }): Promise<PokemonNameSuggestion[]>;
+  findSimilarByDexId(input: { dexId: number; limit: number }): Promise<SimilarPokemonResult[]>;
 }

@@ -6,7 +6,10 @@ import {
   LookupPokemonByNameQuery,
   SuggestPokemonHandler,
   SuggestPokemonQueryDto,
-  SuggestPokemonQuery
+  SuggestPokemonQuery,
+  FindSimilarPokemonQuery,
+  FindSimilarPokemonHandler,
+  FindSimilarQueryDto
 } from '../application';
 import { BrowsePokedexHandler, LookupPokemonByDexIdHandler, LookupPokemonByNameHandler } from '../application';
 import { DexId, PokemonName } from '../domain';
@@ -17,7 +20,8 @@ export class PokedexController {
     private readonly browse: BrowsePokedexHandler,
     private readonly byDex: LookupPokemonByDexIdHandler,
     private readonly byName: LookupPokemonByNameHandler,
-    private readonly suggest: SuggestPokemonHandler
+    private readonly suggest: SuggestPokemonHandler,
+    private readonly findSimilar: FindSimilarPokemonHandler
   ) {}
 
   @Get()
@@ -30,7 +34,10 @@ export class PokedexController {
         dexFrom: q.dexFrom,
         dexTo: q.dexTo,
         limit: q.limit ?? 20,
-        offset: q.offset ?? 0
+        offset: q.offset ?? 0,
+        cursor: q.cursor,
+        sort: q.sort,
+        direction: q.direction
       })
     );
   }
@@ -54,5 +61,17 @@ export class PokedexController {
     return isDexId
       ? this.byDex.execute(new LookupPokemonByDexIdQuery(DexId.of(asNumber)))
       : this.byName.execute(new LookupPokemonByNameQuery(PokemonName.of(trimmed)));
+  }
+
+  @Get(':dexId/similar')
+  similar(@Param('dexId') dexId: string, @Query() q: FindSimilarQueryDto) {
+    const id = Number(dexId);
+
+    return this.findSimilar.execute(
+      new FindSimilarPokemonQuery({
+        dexId: id,
+        limit: q.limit ?? 10
+      })
+    );
   }
 }
