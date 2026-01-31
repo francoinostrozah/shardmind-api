@@ -4,6 +4,8 @@ import { PokedexModule } from './pokedex';
 import { IngestionModule } from './ingestion';
 import { ConfigModule } from '@nestjs/config';
 import { GenerationModule } from './shared/generation';
+import { LoggerModule } from './core';
+import { HealthModule } from './core/health';
 
 @Module({
   imports: [
@@ -14,7 +16,9 @@ import { GenerationModule } from './shared/generation';
     PrismaModule,
     GenerationModule,
     PokedexModule,
-    IngestionModule
+    IngestionModule,
+    LoggerModule,
+    HealthModule
   ]
 })
 export class AppModule {}

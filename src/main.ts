@@ -1,6 +1,7 @@
 import { ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
+import { CorrelationMiddleware } from './core/observability/correlation/ index';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -20,6 +21,8 @@ async function bootstrap() {
       }
     })
   );
+
+  app.use(new CorrelationMiddleware().use);
 
   // Enable CORS if a frontend will consume this API
   // app.enableCors({ origin: true, credentials: true });
