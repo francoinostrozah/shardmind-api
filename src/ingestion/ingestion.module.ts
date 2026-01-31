@@ -1,11 +1,16 @@
 import { Module } from '@nestjs/common';
-import { IngestionController, IngestionObservabilityController } from './presentation';
-import { ListIngestionRunErrorsHandler, ListIngestionRunsHandler, SyncPokedexGenerationHandler } from './application';
+import { IngestionController, IngestionMaintenanceController, IngestionObservabilityController } from './presentation';
+import {
+  BackfillPokemonStatsVectorHandler,
+  ListIngestionRunErrorsHandler,
+  ListIngestionRunsHandler,
+  SyncPokedexGenerationHandler
+} from './application';
 import { PokeApiClient } from './infrastructure/pokeapi';
 import { IngestionRunPrismaRepository, PokedexUpsertPrismaRepository } from './infrastructure/prisma';
 
 @Module({
-  controllers: [IngestionController, IngestionObservabilityController],
+  controllers: [IngestionController, IngestionObservabilityController, IngestionMaintenanceController],
   providers: [
     // commands
     SyncPokedexGenerationHandler,
@@ -13,6 +18,7 @@ import { IngestionRunPrismaRepository, PokedexUpsertPrismaRepository } from './i
     // queries (observability)
     ListIngestionRunsHandler,
     ListIngestionRunErrorsHandler,
+    BackfillPokemonStatsVectorHandler,
 
     // infra
     PokeApiClient,

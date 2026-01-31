@@ -182,12 +182,23 @@ export class PokemonPrismaRepository implements PokemonRepository {
   async findSimilarByDexId(input: { dexId: number; limit: number }) {
     const limit = Math.min(Math.max(input.limit, 1), 50);
 
-    // This query:
-    // 1) Builds the base Pokémon feature set (types + stats).
-    // 2) Scores all other Pokémon by:
-    //    - type overlap weight
-    //    - inverse L1 distance on stats
-    // 3) Returns the top results.
+    // Stage 1 (retrieve): fetch a base vector once.
+    const baseVecRow = await this.prisma.$queryRaw<{ statsVector: string | null }[]>`
+    SELECT "statsVector"::text as "statsVector"
+    FROM "Pokemon"
+    WHERE "dexId" = ${input.dexId}
+    LIMIT 1;
+  `;
+
+    const baseVecText = baseVecRow[0]?.statsVector;
+    if (!baseVecText) return [];
+
+    // Retrieve more than needed, then rerank using type overlap.
+    const topK = Math.max(limit * 5, 30); // e.g., 10 -> 50 candidates
+
+    // Two-stage retrieval:
+    // 1) kNN by statsVector distance
+    // 2) rerank by shared types and return final top N
     const rows = await this.prisma.$queryRaw<
       {
         dexId: number;
@@ -197,121 +208,51 @@ export class PokemonPrismaRepository implements PokemonRepository {
         sharedTypes: string[];
       }[]
     >`
-      WITH base_types AS (
-        SELECT pt."typeId", pt."slot"
-        FROM "PokemonType" pt
-        WHERE pt."pokemonDexId" = ${input.dexId}
-      ),
-      -- Stat ranges (min/max) used for min-max normalization.
-      stat_ranges AS (
-        SELECT
-          s."name" AS stat_name,
-          MIN(ps."baseValue") AS min_val,
-          MAX(ps."baseValue") AS max_val
-        FROM "PokemonStat" ps
-        JOIN "Stat" s ON s."id" = ps."statId"
-        GROUP BY s."name"
-      ),
-      base_stats AS (
-        SELECT
-          MAX(CASE WHEN s."name" = 'hp' THEN ps."baseValue" END) AS hp,
-          MAX(CASE WHEN s."name" = 'attack' THEN ps."baseValue" END) AS attack,
-          MAX(CASE WHEN s."name" = 'defense' THEN ps."baseValue" END) AS defense,
-          MAX(CASE WHEN s."name" = 'special-attack' THEN ps."baseValue" END) AS sp_attack,
-          MAX(CASE WHEN s."name" = 'special-defense' THEN ps."baseValue" END) AS sp_defense,
-          MAX(CASE WHEN s."name" = 'speed' THEN ps."baseValue" END) AS speed
-        FROM "PokemonStat" ps
-        JOIN "Stat" s ON s."id" = ps."statId"
-        WHERE ps."pokemonDexId" = ${input.dexId}
-      ),
-      candidate_stats AS (
-        SELECT
-          p."dexId",
-          p."name",
-          p."spriteDefault",
-          MAX(CASE WHEN s."name" = 'hp' THEN ps."baseValue" END) AS hp,
-          MAX(CASE WHEN s."name" = 'attack' THEN ps."baseValue" END) AS attack,
-          MAX(CASE WHEN s."name" = 'defense' THEN ps."baseValue" END) AS defense,
-          MAX(CASE WHEN s."name" = 'special-attack' THEN ps."baseValue" END) AS sp_attack,
-          MAX(CASE WHEN s."name" = 'special-defense' THEN ps."baseValue" END) AS sp_defense,
-          MAX(CASE WHEN s."name" = 'speed' THEN ps."baseValue" END) AS speed
-        FROM "Pokemon" p
-        JOIN "PokemonStat" ps ON ps."pokemonDexId" = p."dexId"
-        JOIN "Stat" s ON s."id" = ps."statId"
-        WHERE p."dexId" <> ${input.dexId}
-        GROUP BY p."dexId", p."name", p."spriteDefault"
-      ),
-      candidate_type_score AS (
-        SELECT
-          pt."pokemonDexId" AS dex_id,
-          SUM(
-            CASE
-              WHEN bt."slot" = 1 AND pt."slot" = 1 THEN 1.0
-              WHEN bt."slot" = 2 AND pt."slot" = 2 THEN 0.6
-              ELSE 0.4
-            END
-          ) AS type_score,
-          ARRAY_AGG(DISTINCT t."name") AS shared_types
-        FROM "PokemonType" pt
-        JOIN base_types bt ON bt."typeId" = pt."typeId"
-        JOIN "Type" t ON t."id" = pt."typeId"
-        WHERE pt."pokemonDexId" <> ${input.dexId}
-        GROUP BY pt."pokemonDexId"
-      )
+    WITH base_types AS (
+      SELECT bt."typeId"
+      FROM "PokemonType" bt
+      WHERE bt."pokemonDexId" = ${input.dexId}
+    ),
+    knn AS (
       SELECT
-        cs."dexId" AS "dexId",
-        cs."name" AS "name",
-        cs."spriteDefault" AS "spriteDefault",
-        (
-          COALESCE(cts.type_score, 0) +
-          (1.0 / (1.0 + SQRT(
-            -- Normalized Euclidean distance across base stats
-            POWER(
-              ((cs.hp - r_hp.min_val)::float / NULLIF((r_hp.max_val - r_hp.min_val), 0)) -
-              ((bs.hp - r_hp.min_val)::float / NULLIF((r_hp.max_val - r_hp.min_val), 0)),
-              2
-            ) +
-            POWER(
-              ((cs.attack - r_atk.min_val)::float / NULLIF((r_atk.max_val - r_atk.min_val), 0)) -
-              ((bs.attack - r_atk.min_val)::float / NULLIF((r_atk.max_val - r_atk.min_val), 0)),
-              2
-            ) +
-            POWER(
-              ((cs.defense - r_def.min_val)::float / NULLIF((r_def.max_val - r_def.min_val), 0)) -
-              ((bs.defense - r_def.min_val)::float / NULLIF((r_def.max_val - r_def.min_val), 0)),
-              2
-            ) +
-            POWER(
-              ((cs.sp_attack - r_spa.min_val)::float / NULLIF((r_spa.max_val - r_spa.min_val), 0)) -
-              ((bs.sp_attack - r_spa.min_val)::float / NULLIF((r_spa.max_val - r_spa.min_val), 0)),
-              2
-            ) +
-            POWER(
-              ((cs.sp_defense - r_spd.min_val)::float / NULLIF((r_spd.max_val - r_spd.min_val), 0)) -
-              ((bs.sp_defense - r_spd.min_val)::float / NULLIF((r_spd.max_val - r_spd.min_val), 0)),
-              2
-            ) +
-            POWER(
-              ((cs.speed - r_spe.min_val)::float / NULLIF((r_spe.max_val - r_spe.min_val), 0)) -
-              ((bs.speed - r_spe.min_val)::float / NULLIF((r_spe.max_val - r_spe.min_val), 0)),
-              2
-            )
-          )))
-        ) AS "score",
-        COALESCE(cts.shared_types, ARRAY[]::text[]) AS "sharedTypes"
-      FROM candidate_stats cs
-      CROSS JOIN base_stats bs
-      LEFT JOIN candidate_type_score cts ON cts.dex_id = cs."dexId"
-      -- Join stat ranges for normalization (one row per stat)
-      JOIN stat_ranges r_hp  ON r_hp.stat_name = 'hp'
-      JOIN stat_ranges r_atk ON r_atk.stat_name = 'attack'
-      JOIN stat_ranges r_def ON r_def.stat_name = 'defense'
-      JOIN stat_ranges r_spa ON r_spa.stat_name = 'special-attack'
-      JOIN stat_ranges r_spd ON r_spd.stat_name = 'special-defense'
-      JOIN stat_ranges r_spe ON r_spe.stat_name = 'speed'
-      ORDER BY "score" DESC, cs."dexId" ASC
-      LIMIT ${limit};
-    `;
+        p."dexId",
+        p."name",
+        p."spriteDefault",
+        (p."statsVector" <-> ${baseVecText}::vector) AS dist
+      FROM "Pokemon" p
+      WHERE p."dexId" <> ${input.dexId}
+        AND p."statsVector" IS NOT NULL
+      ORDER BY p."statsVector" <-> ${baseVecText}::vector
+      LIMIT ${topK}
+    ),
+    shared AS (
+      SELECT
+        pt."pokemonDexId" AS dex_id,
+        COUNT(*)::int AS shared_count,
+        ARRAY_AGG(DISTINCT t."name") AS shared_types
+      FROM "PokemonType" pt
+      JOIN base_types bt ON bt."typeId" = pt."typeId"
+      JOIN "Type" t ON t."id" = pt."typeId"
+      WHERE pt."pokemonDexId" <> ${input.dexId}
+      GROUP BY pt."pokemonDexId"
+    )
+    SELECT
+      k."dexId" AS "dexId",
+      k."name" AS "name",
+      k."spriteDefault" AS "spriteDefault",
+      (
+        -- Vector similarity: higher is better
+        (1.0 / (1.0 + k.dist))
+        +
+        -- Type boost (rerank): cap at 2 shared types
+        (0.15 * LEAST(COALESCE(s.shared_count, 0), 2))
+      ) AS "score",
+      COALESCE(s.shared_types, ARRAY[]::text[]) AS "sharedTypes"
+    FROM knn k
+    LEFT JOIN shared s ON s.dex_id = k."dexId"
+    ORDER BY "score" DESC, k."dexId" ASC
+    LIMIT ${limit};
+  `;
 
     return rows.map((r) => ({
       dexId: r.dexId,

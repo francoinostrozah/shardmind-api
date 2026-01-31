@@ -26,6 +26,8 @@ model Pokemon {
   weight         Int?
   baseExperience Int?
   spriteDefault  String?
+  statsVector   Unsupported("vector(6)")?
+
 
   types     PokemonType[]
   stats     PokemonStat[]
