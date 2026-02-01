@@ -1,8 +1,16 @@
-name: CI -> Deploy Render (hook)
+name: CI -> Build GHCR -> Deploy Render
 
 on:
   push:
     branches: ['main']
+
+concurrency:
+  group: render-deploy-main
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write
 
 jobs:
   ci:
@@ -20,8 +28,30 @@ jobs:
       - run: npm test --if-present
       - run: npm run build
 
-  deploy:
+  docker:
     needs: ci
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build & push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ github.sha }}
+
+  deploy:
+    needs: docker
     runs-on: ubuntu-latest
     steps:
       - name: Trigger Render deploy hook
