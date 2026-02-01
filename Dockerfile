@@ -40,7 +40,6 @@ RUN npm run build
 FROM node:24-alpine AS runtime
 
 WORKDIR /app
-
 ENV NODE_ENV=production
 
 # Copy only what is required to run the app
@@ -51,7 +50,12 @@ COPY --from=build /app/dist ./dist
 # Copy Prisma files required for migrations/runtime
 COPY --from=build /app/prisma ./prisma
 
-# If you use Prisma v7 config file, include it as well
-COPY --from=build /app/prisma.config.ts ./prisma.config.ts
+# Render provides PORT automatically, but we expose 3000 for local development.
+ENV PORT=3000
+EXPOSE 3000
 
-# Render provides PORT automatically, but
+# IMPORTANT:
+# - "prisma migrate deploy" will fail if DATABASE_URL is missing or DB is unreachable.
+# - The app must listen on 0.0.0.0 and process.env.PORT.
+
+CMD ["sh", "-c", "node dist/src/main.js"]
