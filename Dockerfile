@@ -54,8 +54,6 @@ COPY --from=build /app/prisma ./prisma
 ENV PORT=3000
 EXPOSE 3000
 
-# IMPORTANT:
-# - "prisma migrate deploy" will fail if DATABASE_URL is missing or DB is unreachable.
 # - The app must listen on 0.0.0.0 and process.env.PORT.
 
 CMD ["sh", "-c", "node dist/src/main.js"]
