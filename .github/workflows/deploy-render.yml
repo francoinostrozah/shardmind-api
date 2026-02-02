@@ -1,45 +1,74 @@
 name: CI -> Build GHCR -> Deploy Render
 
 on:
+  # Trigger this workflow only when pushing to the main branch
   push:
     branches: ['main']
 
 concurrency:
+  # Prevent multiple deployments running at the same time
+  # If a new push happens, the previous workflow run is cancelled
   group: render-deploy-main
   cancel-in-progress: true
 
 permissions:
+  # Allow reading repository contents
   contents: read
+
+  # Allow pushing Docker images to GitHub Container Registry (GHCR)
   packages: write
 
 jobs:
+  # ============================
+  # 1) CI JOB: Code Quality Gate
+  # ============================
   ci:
     runs-on: ubuntu-latest
+
     steps:
+      # Checkout the repository source code into the runner
       - uses: actions/checkout@v4
 
+      # Scan the repository for leaked secrets (API keys, tokens, passwords)
+      # This prevents accidental credential exposure in commits
       - name: Scan secrets with Gitleaks
         uses: gitleaks/gitleaks-action@v2
 
+      # Set up Node.js environment for installing dependencies and building the app
       - uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: '20' # Use stable Node.js LTS version
+          cache: 'npm' # Cache npm dependencies for faster installs
 
+      # Install dependencies using a clean, reproducible install
       - run: npm ci
+
+      # Run ESLint to ensure code quality and enforce rules
       - run: npm run lint
+
+      # Check that code formatting matches Prettier rules (does not modify files)
       - run: npm run format:check
+
+      # Build the NestJS application (compiles TypeScript into dist/)
       - run: npm run build
 
+  # ==================================
+  # 2) DOCKER JOB: Build + Push Image
+  # ==================================
   docker:
-    needs: ci
+    needs: ci # Only run if CI job succeeds
     runs-on: ubuntu-latest
+
     steps:
+      # Checkout repository again (each job runs in a fresh VM)
       - uses: actions/checkout@v4
 
+      # Enable Docker Buildx for advanced builds (cache, multi-stage, etc.)
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # Authenticate to GitHub Container Registry (GHCR)
+      # Required to push Docker images
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
@@ -47,24 +76,78 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # Build and push the Docker image to GHCR
+      # Uses GitHub Actions cache for faster rebuilds
       - name: Build & push image
         uses: docker/build-push-action@v6
         with:
-          context: .
-          push: true
+          context: . # Build context is the repository root
+          push: true # Push image to GHCR after build
+
+          # Tag image with both "latest" and commit SHA for traceability
           tags: |
             ghcr.io/${{ github.repository }}:latest
             ghcr.io/${{ github.repository }}:${{ github.sha }}
+
+          # Enable remote caching to speed up future builds
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # Scan the built Docker image for known vulnerabilities (CVEs)
+      # Fails the pipeline if HIGH or CRITICAL issues are found
+      - name: Scan image with Trivy
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ghcr.io/${{ github.repository }}:${{ github.sha }}
+
+          # Scan both OS packages and Node.js dependencies
+          vuln-type: os,library
+
+          # Only fail on serious vulnerabilities
+          severity: HIGH,CRITICAL
+
+          # Ignore vulnerabilities that do not yet have a fix available
+          ignore-unfixed: true
+
+          # Display results in a readable table format
+          format: table
+
+          # Exit with code 1 if vulnerabilities are found → blocks deployment
+          exit-code: 1
+
+      # Generate an SBOM (Software Bill of Materials) for the built Docker image.
+      # This produces a full dependency inventory (OS packages + application libs)
+      # in a standardized format (SPDX or CycloneDX).
+      - name: Generate SBOM (CycloneDX)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ghcr.io/${{ github.repository }}:${{ github.sha }}
+          format: cyclonedx-json
+          output-file: sbom.cdx.json
+
+      # Upload the SBOM file so you can download it from the workflow run artifacts
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ github.sha }}
+          path: sbom.cdx.json
+          retention-days: 30
+  # ==================================
+  # 3) DEPLOY JOB: Trigger Render Deploy
+  # ==================================
   deploy:
-    needs: docker
+    needs: docker # Only deploy if image build + security scan succeed
     runs-on: ubuntu-latest
+
     steps:
+      # Trigger a Render deploy using a deploy hook URL stored in secrets
       - name: Trigger Render deploy hook
         env:
           DEPLOY_HOOK: ${{ secrets.RENDER_DEPLOY_HOOK }}
+
         run: |
+          # Ensure the deploy hook secret is set
           test -n "$DEPLOY_HOOK"
+
+          # Trigger deployment on Render
           curl -fsSL -X POST "$DEPLOY_HOOK"
