@@ -4,8 +4,7 @@ import { PokedexModule } from './pokedex';
 import { IngestionModule } from './ingestion';
 import { ConfigModule } from '@nestjs/config';
 import { GenerationModule } from './shared/generation';
-import { LoggerModule } from './core';
-import { HealthModule } from './core/health';
+import { HealthModule, LoggerModule, MetricsModule } from './core';
 
 @Module({
   imports: [
@@ -18,6 +17,7 @@ import { HealthModule } from './core/health';
     PokedexModule,
     IngestionModule,
     LoggerModule,
+    MetricsModule,
     HealthModule
   ]
 })
