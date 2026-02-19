@@ -1,5 +1,5 @@
 import { DexId, PokemonName } from '../value-objects';
-import { PokemonDetail, PokemonListItem } from '../models';
+import { PokemonDetail, PokemonListItem } from '../models';ma
 
 export type PokedexBrowseCriteria = {
   q?: string;
